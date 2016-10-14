@@ -2,6 +2,7 @@
 #define HELLO_H
 
 #include <QMainWindow>
+#include <opencv2/core.hpp>
 
 namespace Ui {
 class Hello;
@@ -10,10 +11,6 @@ class Hello;
 class QTimer;
 
 class QLabel;
-
-namespace cv {
-class Mat;
-}
 
 
 class Hello : public QMainWindow
@@ -44,9 +41,12 @@ private:
 
     void stop();
 
+    void undistortImage(const cv::Mat &img, cv::Mat &undistortImg);
+
     void showPicInLabel(cv::Mat &img, QLabel *frame);
 
     void updateFileList(const QString &newDir);
+    void getDoorFrame(cv::Mat &biImg, std::vector<cv::Vec4i> &lines);
 };
 
 #endif // HELLO_H

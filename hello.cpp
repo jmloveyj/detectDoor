@@ -8,8 +8,11 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <QImage>
+#include <iostream>
+#include <math.h>
 
 using namespace cv;
+using namespace std;
 
 //将opencv 的mat 转换为可以显示的qt图片
 static QImage Mat2QImage(Mat& image)
@@ -22,7 +25,7 @@ static QImage Mat2QImage(Mat& image)
                      image.cols*image.channels(), QImage::Format_RGB888);
     } else if (image.channels()==1) {
         img = QImage((const unsigned char *)(image.data), image.cols, image.rows,
-                     image.cols*image.channels(), QImage::Format_ARGB32);
+                     image.cols*image.channels(), QImage::Format_Grayscale8);
     } else {
         img = QImage((const unsigned char *)(image.data), image.cols, image.rows,
                      image.cols*image.channels(), QImage::Format_RGB888);
@@ -72,6 +75,49 @@ void Hello::onControl()
     }
 }
 
+
+
+void Hello::getDoorFrame(cv::Mat &biImg, std::vector<cv::Vec4i> &lines)
+{
+    cv::HoughLinesP(biImg,lines,1, CV_PI/180, 30, 30, 15);
+    vector<cv::Vec4i>::iterator it = lines.begin();
+
+    while(it!=lines.end()) {
+        float distance = sqrt(((*it)[1] - (*it)[3])*((*it)[1] - (*it)[3]) +
+                ((*it)[0] - (*it)[2])*((*it)[0] - (*it)[2]));
+        if ((*it)[0] == (*it)[2]) {
+            it++;
+            continue;
+
+        }
+
+        float angle = atanf(fabs(((*it)[1] - (*it)[3])/(float)((*it)[0] - (*it)[2])))*2/CV_PI;
+
+        if((angle >0.02)&&(angle<0.8)) {
+            lines.erase(it);
+            continue;
+        }
+
+        if(angle>0.79) {
+            if(distance<300) {
+                lines.erase(it);
+                continue;
+            }
+        }
+        if(angle<0.16) {
+            if((*it)[1]>150) {
+                lines.erase(it);
+                continue;
+            }
+
+        }
+        it++;
+
+
+    }
+}
+
+
 void Hello::showPic()
 {
     if(fileList.isEmpty()) {
@@ -79,15 +125,31 @@ void Hello::showPic()
     }
     std::string path = (dir+"/"+fileList.at(fileIndex)).toStdString();
 
-    cv::Mat img;
+    cv::Mat img,newImg,biImg;
     img = cv::imread(path.c_str());
 
-    //    qDebug()<<img.size().height<<path.c_str();
+    undistortImage(img,newImg);
+
+    cv::cvtColor(newImg,biImg,COLOR_BGR2GRAY);
+    blur( biImg, biImg, Size(3,3) );
+    cv::Canny(biImg,biImg,100,200);
 
 
-    showPicInLabel(img, ui->originPic);
+    std::vector<cv::Vec4i> lines;
 
-    showPicInLabel(img, ui->processedImg);
+    getDoorFrame(biImg, lines);
+    qDebug()<<lines.size();
+
+
+    for( size_t i = 0; i < lines.size(); i++ )
+    {
+        line(newImg, Point(lines[i][0], lines[i][1]),
+                Point(lines[i][2], lines[i][3]), Scalar(0,255,0), 2);
+    }
+
+
+    showPicInLabel(newImg, ui->originPic);
+    showPicInLabel(biImg, ui->processedImg);
 
     fileIndex = fileIndex +1;
     if(fileIndex == fileList.length()) {
@@ -99,7 +161,7 @@ void Hello::play()
 {
     state = "inProgress";
     ui->control->setText(tr("停止播放"));
-    pTimer->start(30);
+    pTimer->start(10);
 }
 
 void Hello::stop()
@@ -113,6 +175,17 @@ void Hello::stop()
     if(pTimer->isActive()) {
         pTimer->stop();
     }
+}
+
+void Hello::undistortImage(const Mat &img, Mat &undistortImg)
+{
+    float intrinsic[3][3] = {{431.6688,0,275.6883},{0,432.6680,236.1946},{0,0,1}};
+    float distortion[1][5] = {{-0.3873, 0.2025, 0,0,-0.0655}};
+    Mat intrinsic_matrix = Mat(3,3,CV_32FC1,intrinsic);
+    Mat distortion_coeffs = Mat(1,5,CV_32FC1,distortion);
+
+    cv::undistort(img,undistortImg,intrinsic_matrix,distortion_coeffs);
+
 }
 
 void Hello::showPicInLabel(Mat &img, QLabel *frame)
